@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cryptex</title>
+<!--
+  CRYPTEX · juego de aula con perfil docente y perfil jugador
+  ─────────────────────────────────────────────────────────────────────────
+  Configuración: objeto CONFIG al inicio del <script type="module">.
+
+  • Sin base de datos (databaseURL vacío): funciona en "modo local". Cada
+    dispositivo guarda su propio progreso y el panel docente solo ve a los
+    jugadores que entraron en ese mismo navegador.
+
+  • Con base de datos (recomendado para la clase): pega en databaseURL la URL
+    de una Firebase Realtime Database gratuita, con reglas de lectura y
+    escritura abiertas para el nodo "cryptex". El panel docente verá en vivo a
+    todos los jugadores, y cada estudiante podrá retomar su progreso
+    escribiendo el mismo nombre.
+
+  Publicación: sube este archivo a un repositorio de GitHub y activa GitHub
+  Pages (Settings → Pages → Deploy from a branch → main / root).
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#101923; --panel:#1B2835; --panel-2:#22313f;
+    --bronze:#B08A4C; --bronze-hi:#d2ae6c; --gold:#d9a441; --ivory:#E7DDC7;
+    --text:#F2EEE6; --muted:#A7B0B8; --line:rgba(176,138,76,.24);
+    --bad:#e8806f; --good:#dcbc6a; --online:#7fc79a;
+  }
+  *{box-sizing:border-box}
+  html{height:100%}
+  body{margin:0;height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;
+    background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}
+  button,input,textarea{font:inherit;color:inherit}
+  .eyebrow{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--bronze)}
+  .serif{font-family:'Cormorant Garamond',Georgia,serif}
+
+  /* ── Vistas ── */
+  body[data-view=login] .topbar, body[data-view=login] .workspace{display:none}
+  body:not([data-view=login]) .login{display:none}
+  body[data-view=player] .tpanel{display:none}
+  body[data-view=teacher] .dock{display:none}
+
+  /* ── Ingreso ── */
+  .login{flex:1;overflow-y:auto;display:grid;place-items:center;padding:32px 16px;
+    background:radial-gradient(ellipse 70% 60% at 50% 30%,#1e3044 0%,#101923 75%)}
+  .login-inner{width:min(860px,100%)}
+  .login .brand{text-align:center;margin-bottom:28px}
+  .login h1{font-family:'Cormorant Garamond',Georgia,serif;font-weight:600;font-size:56px;margin:4px 0 6px;letter-spacing:.02em}
+  .login .brand p{margin:0 auto;max-width:460px;color:var(--muted);font-size:15px;line-height:1.5}
+  .lcards{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .lcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px 22px;display:flex;flex-direction:column;gap:10px}
+  .lcard h2{font-family:'Cormorant Garamond',Georgia,serif;font-size:28px;font-weight:600;margin:0}
+  .lcard label{font-size:13px;color:var(--muted);margin-top:4px}
+  body:not([data-ready]) .lcard button{opacity:.5;pointer-events:none}
+  .lcard .note{font-size:12.5px;color:var(--muted);line-height:1.5;margin:2px 0 0}
+  .err{color:var(--bad);font-size:13px;min-height:18px;margin:0}
+  input[type=text],input[type=password],textarea{width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;
+    padding:11px 12px;font-size:15px;outline:none;transition:border-color .15s}
+  input:focus,textarea:focus{border-color:var(--bronze)}
+  textarea{resize:vertical;line-height:1.45}
+
+  /* ── Botones ── */
+  .btn{padding:10px 14px;border-radius:8px;border:1px solid var(--line);background:transparent;cursor:pointer;font-size:14px;font-weight:500;transition:.15s}
+  .btn:hover:not(:disabled){border-color:var(--bronze);background:rgba(176,138,76,.1)}
+  .btn.primary{background:var(--bronze);border-color:var(--bronze);color:#18120a;font-weight:600}
+  .btn.primary:hover:not(:disabled){background:var(--bronze-hi)}
+  .btn.danger{border-color:rgba(232,128,111,.5);color:var(--bad)}
+  .btn.danger:hover:not(:disabled){background:rgba(232,128,111,.1);border-color:var(--bad)}
+  .btn.danger.confirm{background:var(--bad);color:#2a0d08;border-color:var(--bad);font-weight:600}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.full{width:100%}
+  .link{background:none;border:0;color:var(--muted);cursor:pointer;font-size:13px;padding:6px 4px}
+  .link:hover{color:var(--text)}
+
+  /* ── Barra superior ── */
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+  .tb-brand{display:flex;align-items:baseline;gap:12px;min-width:0}
+  .tb-brand .who{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tb-right{display:flex;align-items:center;gap:10px}
+  .chip{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);padding:4px 10px;border:1px solid var(--line);border-radius:999px;white-space:nowrap}
+  .chip i{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+  .chip.online i{background:var(--online)} .chip.error i{background:var(--bad)} .chip.error{color:var(--bad)}
+  .chip.local i{background:var(--bronze)}
+
+  /* ── Área de trabajo ── */
+  .workspace{flex:1;min-height:0;display:grid}
+  body[data-view=player] .workspace{grid-template-rows:minmax(0,1fr) auto}
+  body[data-view=teacher] .workspace{grid-template-columns:minmax(0,1fr) minmax(400px,560px)}
+
+  .stage{position:relative;overflow:hidden;touch-action:none;min-height:260px;
+    background:radial-gradient(ellipse 70% 60% at 50% 46%,#23364b 0%,#172533 48%,#101923 85%)}
+  .stage canvas{display:block;width:100%;height:100%;outline:none}
+  .stage-hint{position:absolute;left:20px;right:20px;bottom:14px;font-size:12.5px;color:var(--muted);pointer-events:none;text-align:center}
+  .toast{position:absolute;left:50%;top:18px;transform:translate(-50%,-12px);opacity:0;background:rgba(27,40,53,.95);
+    border:1px solid var(--line);padding:10px 16px;border-radius:10px;font-size:13.5px;transition:.35s ease;pointer-events:none;
+    max-width:min(92%,520px);text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+  .loader{position:absolute;inset:0;display:grid;place-items:center;background:var(--bg);transition:opacity .6s;z-index:3}
+  .loader.hide{opacity:0;pointer-events:none}
+  .loader p{font-family:'Cormorant Garamond',Georgia,serif;font-size:22px;color:var(--ivory)}
+
+  /* ── Controles del jugador ── */
+  .dock{display:flex;align-items:center;justify-content:center;gap:28px;padding:16px 24px 18px;background:var(--panel);border-top:1px solid var(--line)}
+  .rings{display:grid;grid-template-columns:repeat(var(--n,5),minmax(0,58px));gap:8px}
+  .ringcol{display:flex;flex-direction:column;gap:5px;align-items:stretch}
+  .arrow{height:32px;border-radius:7px;border:1px solid var(--line);background:transparent;cursor:pointer;color:var(--bronze-hi);font-size:12px;transition:.15s;touch-action:manipulation}
+  .arrow:hover:not(:disabled){background:rgba(176,138,76,.14)}
+  .arrow:disabled{opacity:.35;cursor:not-allowed}
+  .rtile{height:54px;border-radius:7px;border:2px solid transparent;cursor:pointer;display:grid;place-items:center;
+    background:linear-gradient(#e6b453,#c88f2c);color:#1a0f04;font-family:'Cormorant Garamond',Georgia,serif;font-weight:700;font-size:30px;
+    box-shadow:inset 0 0 0 1px rgba(80,50,10,.35),0 2px 0 rgba(0,0,0,.3);transition:border-color .15s, background .25s}
+  .rtile.active{border-color:var(--ivory)}
+  .rings.bad .rtile{background:linear-gradient(#ee9a88,#d0705e)}
+  .rings.ok .rtile{box-shadow:inset 0 0 0 1px rgba(80,50,10,.35),0 0 16px rgba(230,180,83,.55)}
+  .actions{display:flex;flex-direction:column;gap:8px;min-width:230px}
+  .btn.try{padding:14px 18px;font-size:16px;border-radius:10px}
+  .feedback{min-height:24px;font-size:15px;text-align:center}
+  .feedback.bad{color:var(--bad);font-weight:600;font-size:18px;letter-spacing:.04em}
+  .feedback.ok{color:var(--good);font-weight:600}
+  .attempts{font-size:12.5px;color:var(--muted);text-align:center;min-height:16px}
+
+  /* ── Panel docente ── */
+  .tpanel{background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;padding:6px 22px 34px}
+  .card{border-bottom:1px solid var(--line);padding:18px 0}
+  .card:last-child{border-bottom:0}
+  .card h2{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--bronze);margin:0 0 10px;font-weight:600}
+  .card-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .help{font-size:12.5px;color:var(--muted);margin:8px 0 0;line-height:1.5}
+  .help b{color:var(--ivory);letter-spacing:.08em}
+  .help.bad{color:var(--bad)}
+  .row{display:flex;gap:8px;margin-top:12px}
+  .row .btn{flex:1}
+  .muted{color:var(--muted);font-size:12.5px}
+  .saved{color:var(--good)}
+  .tablewrap{overflow-x:auto;margin:4px 0 14px}
+  .ptable{width:100%;border-collapse:collapse;font-size:13px}
+  .ptable th{text-align:left;font-weight:500;color:var(--muted);font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:8px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .ptable td{padding:10px 6px;border-bottom:1px solid rgba(176,138,76,.12);vertical-align:middle}
+  .ptable .empty{color:var(--muted);text-align:center;padding:22px 6px}
+  .pname{font-weight:500}
+  .pact{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11.5px;margin-top:2px;white-space:nowrap}
+  .pact i{width:6px;height:6px;border-radius:50%;background:#56636e}
+  .pact i.on{background:var(--online)}
+  .mini{display:inline-flex;gap:2px}
+  .mini span{width:19px;height:23px;display:grid;place-items:center;border-radius:3px;background:var(--panel-2);color:var(--ivory);
+    font-family:'Cormorant Garamond',Georgia,serif;font-weight:700;font-size:15px}
+  .mini span.hit{background:var(--gold);color:#1a0f04}
+  .tag{display:inline-block;font-size:11.5px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+  .tag.done{background:var(--good);border-color:var(--good);color:#1b1407;font-weight:600}
+  .mono{font-family:'Cormorant Garamond',Georgia,serif;font-weight:700;font-size:15px;letter-spacing:.06em}
+
+  /* ── Mensaje ── */
+  .modal{position:fixed;inset:0;display:grid;place-items:center;background:rgba(6,10,15,.72);backdrop-filter:blur(4px);
+    opacity:0;pointer-events:none;transition:opacity .35s;z-index:20;padding:20px}
+  .modal.show{opacity:1;pointer-events:auto}
+  .scroll{position:relative;width:min(540px,100%);padding:44px 40px 34px;color:#3a2812;text-align:center;
+    background:radial-gradient(ellipse at 50% 40%,#f3e9d1 0%,#e6d6b2 70%,#d6c196 100%);
+    box-shadow:0 30px 70px rgba(0,0,0,.5);clip-path:inset(50% 0 50% 0);transition:clip-path .8s cubic-bezier(.6,.05,.25,1)}
+  .modal.show .scroll{clip-path:inset(0 0 0 0)}
+  .scroll::before,.scroll::after{content:"";position:absolute;left:-10px;right:-10px;height:18px;border-radius:9px;background:linear-gradient(#8a6a37,#c9a462 45%,#6e5228)}
+  .scroll::before{top:-6px}.scroll::after{bottom:-6px}
+  .scroll .eyebrow{color:#7a5a2c}
+  .scroll .msg{font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-size:30px;line-height:1.25;margin:16px 0 24px;white-space:pre-line;overflow-wrap:anywhere}
+  .scroll button{border:1px solid #8a6a37;background:transparent;color:#3a2812;padding:9px 20px;border-radius:999px;cursor:pointer}
+  .scroll button:hover{background:rgba(138,106,55,.12)}
+
+  @media (max-width:900px){
+    body{height:auto;min-height:100dvh;overflow:auto}
+    .workspace{display:block}
+    .stage{height:54vh;height:54svh}
+    body[data-view=teacher] .stage{height:40vh;height:40svh}
+    .tpanel{border-left:0;border-top:1px solid var(--line);overflow:visible;padding:4px 16px 40px}
+    .dock{flex-direction:column;align-items:stretch;gap:14px;padding:14px 16px 26px}
+    .rings{grid-template-columns:repeat(var(--n,5),minmax(0,1fr));gap:5px}
+    .rtile{height:46px;font-size:clamp(17px,5.4vw,28px)}
+    .arrow{height:36px}
+    .actions{min-width:0}
+    .topbar{padding:10px 14px}
+    .lcards{grid-template-columns:1fr}
+    .login h1{font-size:44px}
+    .stage-hint{font-size:11.5px;bottom:10px}
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body data-view="login">
+
+<section class="login" id="login">
+  <div class="login-inner">
+    <div class="brand">
+      <div class="eyebrow">Desafío</div>
+      <h1>Cryptex</h1>
+      <p>Gira los anillos hasta formar la palabra secreta y abre el compartimiento oculto.</p>
+    </div>
+    <div class="lcards">
+      <form class="lcard" id="playerForm" autocomplete="off">
+        <h2>Jugador</h2>
+        <label for="nameIn">Tu nombre y apellido</label>
+        <input type="text" id="nameIn" maxlength="40" placeholder="Ej.: Camila Rojas">
+        <p class="err" id="nameErr"></p>
+        <button class="btn primary" id="btnPlayer" type="submit">Entrar a jugar</button>
+        <p class="note">Si se te cierra la página, vuelve a entrar con el mismo nombre y seguirás donde quedaste.</p>
+      </form>
+      <form class="lcard" id="teacherForm" autocomplete="off">
+        <h2>Docente</h2>
+        <label for="pwIn">Contraseña</label>
+        <input type="password" id="pwIn" maxlength="60">
+        <p class="err" id="pwErr"></p>
+        <button class="btn primary" type="submit">Entrar como docente</button>
+        <p class="note">Configura la palabra secreta y el mensaje, y revisa el avance de cada jugador.</p>
+      </form>
+    </div>
+  </div>
+</section>
+
+<header class="topbar">
+  <div class="tb-brand"><span class="eyebrow">Cryptex</span><span class="who" id="tbWho"></span></div>
+  <div class="tb-right">
+    <span class="chip" id="netChip"><i></i><span></span></span>
+    <button class="link" id="btnLogout">Salir</button>
+  </div>
+</header>
+
+<div class="workspace">
+  <main class="stage" id="stage">
+    <canvas id="c" tabindex="0" aria-label="Cryptex tridimensional"></canvas>
+    <div class="stage-hint" id="stageHint"></div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <div class="loader" id="loader"><p>Preparando el cryptex…</p></div>
+  </main>
+
+  <section class="dock" id="dock">
+    <div class="rings" id="ringsUI"></div>
+    <div class="actions">
+      <button class="btn primary try" id="btnTry">Probar combinación</button>
+      <div class="feedback" id="feedback" role="status" aria-live="polite"></div>
+      <div class="attempts" id="attempts"></div>
+    </div>
+  </section>
+
+  <aside class="tpanel" id="tpanel">
+    <section class="card">
+      <h2>Palabra secreta</h2>
+      <input type="text" id="wordIn" maxlength="40" spellcheck="false" autocomplete="off">
+      <p class="help" id="wordHelp"></p>
+      <h2 style="margin-top:20px">Mensaje al abrir</h2>
+      <textarea id="msgIn" rows="3" maxlength="300"></textarea>
+      <div class="row">
+        <button class="btn primary" id="btnSave">Guardar cambios</button>
+        <button class="btn" id="btnPreviewMsg">Ver mensaje</button>
+      </div>
+      <p class="help" id="saveHelp">Si cambias la palabra, el progreso de los jugadores vuelve a empezar.</p>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Jugadores</h2><span class="muted" id="pSummary"></span></div>
+      <div class="tablewrap">
+        <table class="ptable">
+          <thead><tr><th>Nombre</th><th>Letras puestas</th><th>Intentos</th><th>Último intento</th><th>Estado</th></tr></thead>
+          <tbody id="pBody"></tbody>
+        </table>
+      </div>
+      <button class="btn danger full" id="btnReset">Resetear juego</button>
+      <p class="help">Borra a todos los jugadores y su progreso. La palabra y el mensaje se mantienen.</p>
+    </section>
+  </aside>
+</div>
+
+<div class="modal" id="msgModal" role="dialog" aria-modal="true" aria-labelledby="msgTitle">
+  <div class="scroll">
+    <div class="eyebrow" id="msgTitle">Mensaje del compartimiento</div>
+    <div class="msg" id="msgText"></div>
+    <button id="msgClose">Enrollar pergamino</button>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+/* ═══════════════════ CONFIGURACIÓN ═══════════════════ */
+const CONFIG = {
+  // URL de tu Firebase Realtime Database, p. ej. 'https://mi-cryptex-default-rtdb.firebaseio.com'
+  // Vacío = modo local (cada dispositivo guarda lo suyo).
+  databaseURL: '',
+  teacherPassword: 'LiceoLuf2026',
+  // Valores iniciales; luego se cambian desde el panel docente.
+  defaultWord: 'CLAVE',
+  defaultMessage: 'Has descubierto el secreto del cryptex',
+  minLetters: 3,
+  maxLetters: 12,
+};
+
+/* ═══════════════════ UTILIDADES ═══════════════════ */
+const LETTERS = 'ABCDEFGHIJKLMNÑOPQRSTUVWXYZ';
+const N = LETTERS.length, STEP = Math.PI * 2 / N;
+const R_LET = 3.0, RING_PITCH = 1.85;
+const FONT = '"Cormorant Garamond", Georgia, "Times New Roman", serif';
+const mod = (n, m) => ((n % m) + m) % m;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const clone = v => (v == null ? null : JSON.parse(JSON.stringify(v)));
+function normalizeWord(s) {
+  return String(s ?? '').toUpperCase().replace(/Ñ/g, '\u0001').normalize('NFD')
+    .replace(/[̀-ͯ]/g, '').replace(/\u0001/g, 'Ñ').replace(/[^A-ZÑ]/g, '');
+}
+const slugify = s => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48);
+const newId = () => 'r' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
+let seed = 1337;
+const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+
+/* ═══════════════════ ALMACENAMIENTO (local o Firebase) ═══════════════════ */
+const splitPath = p => String(p || '').split('/').filter(Boolean);
+function getAt(obj, segs) {
+  let o = obj;
+  for (const s of segs) { if (o == null || typeof o !== 'object') return null; o = o[s]; }
+  return o === undefined ? null : o;
+}
+function setAt(root, segs, val) {
+  if (!segs.length) return val == null ? null : val;
+  if (root == null || typeof root !== 'object') root = {};
+  let o = root;
+  for (let i = 0; i < segs.length - 1; i++) {
+    if (o[segs[i]] == null || typeof o[segs[i]] !== 'object') o[segs[i]] = {};
+    o = o[segs[i]];
+  }
+  const last = segs[segs.length - 1];
+  if (val == null) delete o[last]; else o[last] = val;
+  return root;
+}
+
+function createLocalStore() {
+  const KEY = 'cryptex-db-v1'; let mem = null; const subs = new Set();
+  const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { return clone(mem); } };
+  const save = t => { mem = clone(t); try { localStorage.setItem(KEY, JSON.stringify(t)); } catch (e) { /* solo memoria */ } };
+  const emit = (s, force) => {
+    const v = getAt(load(), splitPath(s.path)), j = JSON.stringify(v);
+    if (force || j !== s.last) { s.last = j; s.cb(clone(v)); }
+  };
+  const notify = () => subs.forEach(s => emit(s));
+  window.addEventListener('storage', e => { if (e.key === KEY) notify(); });
+  return {
+    mode: 'local',
+    async get(p) { return clone(getAt(load(), splitPath(p))); },
+    async set(p, v) { save(setAt(load(), splitPath(p), clone(v))); notify(); },
+    async update(p, obj) { let t = load(); for (const k in obj) t = setAt(t, [...splitPath(p), ...splitPath(k)], clone(obj[k])); save(t); notify(); },
+    async remove(p) { save(setAt(load(), splitPath(p), null)); notify(); },
+    subscribe(p, cb) { const s = { path: p, cb, last: undefined }; subs.add(s); queueMicrotask(() => subs.has(s) && emit(s, true)); return () => subs.delete(s); },
+    onStatus(cb) { cb('local'); },
+  };
+}
+
+function createRemoteStore(base) {
+  const url = p => `${base}/cryptex${splitPath(p).map(s => '/' + encodeURIComponent(s)).join('')}.json`;
+  let status = 'connecting'; const statusCbs = new Set();
+  const setStatus = s => { if (s !== status) { status = s; statusCbs.forEach(cb => cb(s)); } };
+  async function req(method, p, body) {
+    let r;
+    try {
+      r = await fetch(url(p), body === undefined ? { method } : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    } catch (e) { setStatus('error'); throw e; }
+    if (!r.ok) { setStatus('error'); throw new Error('HTTP ' + r.status); }
+    setStatus('online'); return r.json();
+  }
+  return {
+    mode: 'remote',
+    get: p => req('GET', p),
+    set: (p, v) => req('PUT', p, v),
+    update: (p, obj) => req('PATCH', p, obj),
+    remove: p => req('DELETE', p),
+    subscribe(p, cb) {
+      let data = null; const es = new EventSource(url(p));
+      const apply = (ev, isPatch) => {
+        let msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+        if (!msg || typeof msg !== 'object') return;
+        const segs = splitPath(msg.path);
+        if (isPatch) { for (const k in msg.data) data = setAt(data, [...segs, ...splitPath(k)], clone(msg.data[k])); }
+        else data = setAt(data, segs, clone(msg.data));
+        setStatus('online'); cb(clone(data));
+      };
+      es.addEventListener('put', e => apply(e, false));
+      es.addEventListener('patch', e => apply(e, true));
+      es.addEventListener('cancel', () => setStatus('error'));
+      es.onopen = () => setStatus('online');
+      es.onerror = () => setStatus(es.readyState === EventSource.CLOSED ? 'error' : 'connecting');
+      return () => es.close();
+    },
+    onStatus(cb) { statusCbs.add(cb); cb(status); },
+  };
+}
+
+const DB_URL = String(CONFIG.databaseURL || '').trim().replace(/\/+$/, '');
+const store = /^https:\/\//.test(DB_URL) ? createRemoteStore(DB_URL) : createLocalStore();
+
+/* ═══════════════════ ESTADO ═══════════════════ */
+const DEFAULT_CFG = { word: normalizeWord(CONFIG.defaultWord) || 'CLAVE', message: CONFIG.defaultMessage, round: 'inicio', resetAt: 0 };
+function cfgFrom(d) {
+  const c = { ...DEFAULT_CFG, ...(d && typeof d === 'object' ? d : {}) };
+  c.word = normalizeWord(c.word);
+  if (c.word.length < CONFIG.minLetters || c.word.length > CONFIG.maxLetters) c.word = DEFAULT_CFG.word;
+  c.message = String(c.message || DEFAULT_CFG.message);
+  return c;
+}
+const state = {
+  view: 'login', config: cfgFrom(null), player: null,
+  turns: [], attempts: 0, lastTry: '', solved: false,
+  open: false, coreMoving: false, coreOffset: 0,
+  activeRing: 0, dragging: null, players: null, loginResetAt: 0,
+};
+let ringAngles = [];
+let unsubs = [];
+
+/* ═══════════════════ ESCENA 3D ═══════════════════ */
+const stage = $('stage'), canvas = $('c');
+let renderer;
+try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); }
+catch (err) { $('loader').innerHTML = '<p>Este navegador no pudo iniciar WebGL.</p>'; throw err; }
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 400);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.dampingFactor = 0.08; controls.enablePan = false;
+controls.minDistance = 8; controls.maxDistance = 120; controls.rotateSpeed = 0.8;
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.add(new THREE.HemisphereLight(0xfff1dc, 0x101923, 0.35));
+const key = new THREE.DirectionalLight(0xffe0b0, 2.6);
+key.position.set(4, 22, 12); key.target.position.set(3, 0, 0);
+key.castShadow = true; key.shadow.mapSize.set(2048, 2048);
+Object.assign(key.shadow.camera, { left: -40, right: 40, top: 22, bottom: -22, near: 1, far: 80 });
+key.shadow.bias = -0.0004; key.shadow.normalBias = 0.02; key.shadow.radius = 4;
+scene.add(key, key.target);
+const rim = new THREE.DirectionalLight(0x9fb8d8, 1.1); rim.position.set(-10, 6, -12); scene.add(rim);
+const fill = new THREE.DirectionalLight(0xffd7a0, 0.5); fill.position.set(-6, -4, 10); scene.add(fill);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.ShadowMaterial({ opacity: 0.32 }));
+ground.rotation.x = -Math.PI / 2; ground.position.y = -3.45; ground.receiveShadow = true; scene.add(ground);
+
+/* ═══════════════════ TEXTURAS ═══════════════════ */
+try { await Promise.race([document.fonts.load('700 100px "Cormorant Garamond"', 'ABCÑ'), new Promise(r => setTimeout(r, 2500))]); } catch (e) { /* fuente alternativa */ }
+
+function canvasTex(w, h, draw, repeat = [1, 1]) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(repeat[0], repeat[1]); t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return t;
+}
+function drawPatina(g, w, h) {
+  g.fillStyle = '#ddd5c6'; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 2600; i++) {
+    const dark = rnd() < 0.55;
+    g.fillStyle = dark ? `rgba(55,40,20,${0.04 + rnd() * 0.12})` : `rgba(255,246,222,${0.04 + rnd() * 0.1})`;
+    g.beginPath(); g.arc(rnd() * w, rnd() * h, 0.3 + rnd() * 2.4, 0, 7); g.fill();
+  }
+  g.lineWidth = 0.7;
+  for (let i = 0; i < 60; i++) {
+    g.strokeStyle = `rgba(60,45,25,${0.08 + rnd() * 0.12})`;
+    const x = rnd() * w, y = rnd() * h, a = rnd() * Math.PI, l = 6 + rnd() * 30;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+  }
+}
+function spiralPath(g, cx, cy, r0, turns, a0) {
+  for (let s = 0; s <= 70; s++) {
+    const t = s / 70, a = a0 + t * turns * Math.PI * 2, r = r0 * (1 - 0.82 * t);
+    const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+    s ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+}
+function drawOrnament(g, w, h) {
+  const grd = g.createLinearGradient(0, 0, 0, h);
+  grd.addColorStop(0, '#20170c'); grd.addColorStop(0.5, '#38291a'); grd.addColorStop(1, '#20170c');
+  g.fillStyle = grd; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 1800; i++) { g.fillStyle = `rgba(0,0,0,${rnd() * 0.25})`; g.fillRect(rnd() * w, rnd() * h, 1.5, 1.5); }
+  const u = w / 8, r0 = h * 0.2;
+  const path = () => {
+    g.beginPath();
+    for (let k = 0; k < 8; k++) {
+      const ox = k * u, ax = ox + u * 0.3, ay = h * 0.38, bx = ox + u * 0.72, by = h * 0.62;
+      spiralPath(g, ax, ay, r0, 1.5, Math.PI / 2);
+      spiralPath(g, bx, by, r0, 1.5, -Math.PI / 2);
+      g.moveTo(ax, ay + r0); g.bezierCurveTo(ax + u * 0.22, ay + r0 + h * 0.08, bx - u * 0.22, by - r0 - h * 0.08, bx, by - r0);
+      g.moveTo(ox, h * 0.14); g.quadraticCurveTo(ox + u * 0.5, h * 0.3, ox + u, h * 0.14);
+      g.moveTo(ox, h * 0.86); g.quadraticCurveTo(ox + u * 0.5, h * 0.7, ox + u, h * 0.86);
+    }
+    g.moveTo(0, 5); g.lineTo(w, 5); g.moveTo(0, h - 5); g.lineTo(w, h - 5);
+  };
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  for (const [c, lw, dx, dy] of [['rgba(0,0,0,.6)', 11, 2, 3], ['#7d5f30', 8.5, 0, 0], ['#cfa964', 5.5, -0.5, -1], ['rgba(255,240,200,.55)', 1.6, -1.5, -2.5]]) {
+    g.save(); g.translate(dx, dy); g.strokeStyle = c; g.lineWidth = lw; path(); g.stroke(); g.restore();
+  }
+}
+function drawLetter(g, w, h, ch, hi) {
+  const [edge, mid] = hi ? ['#a8741f', '#e2ad4b'] : ['#cdbd99', '#e2d6ba'];
+  const grd = g.createLinearGradient(0, 0, w, 0);
+  grd.addColorStop(0, edge); grd.addColorStop(0.12, mid); grd.addColorStop(0.88, mid); grd.addColorStop(1, edge);
+  g.fillStyle = grd; g.fillRect(0, 0, w, h);
+  g.lineWidth = 1.2;
+  for (let i = 0; i < 5; i++) {
+    g.strokeStyle = hi ? `rgba(110,70,10,${0.08 + rnd() * 0.1})` : `rgba(150,115,60,${0.08 + rnd() * 0.12})`;
+    g.beginPath(); let x = rnd() * w, y = rnd() * h; g.moveTo(x, y);
+    for (let s = 0; s < 5; s++) { x += (rnd() - 0.5) * 90; y += (rnd() - 0.5) * 60; g.lineTo(x, y); }
+    g.stroke();
+  }
+  g.fillStyle = 'rgba(70,48,22,.75)'; g.fillRect(0, 0, w, 3); g.fillRect(0, h - 3, w, 3);
+  g.font = `700 ${Math.round(h * 0.76)}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  if (!hi) { g.fillStyle = 'rgba(255,250,236,.35)'; g.fillText(ch, w / 2 + 1, h / 2 + 7); }
+  g.fillStyle = hi ? '#170d03' : '#24170a'; g.fillText(ch, w / 2, h / 2 + 4);
+}
+function drawParchment(g, w, h) {
+  const grd = g.createLinearGradient(0, 0, 0, h);
+  grd.addColorStop(0, '#d9c79f'); grd.addColorStop(0.5, '#efe3c6'); grd.addColorStop(1, '#d9c79f');
+  g.fillStyle = grd; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 900; i++) { g.strokeStyle = `rgba(140,105,55,${rnd() * 0.12})`; g.lineWidth = 0.6; const x = rnd() * w, y = rnd() * h; g.beginPath(); g.moveTo(x, y); g.lineTo(x + 8 + rnd() * 20, y + (rnd() - 0.5) * 3); g.stroke(); }
+}
+function drawRollEnd(g, w, h) {
+  g.fillStyle = '#d8c8a2'; g.fillRect(0, 0, w, h);
+  g.strokeStyle = 'rgba(110,80,40,.55)'; g.lineWidth = 1.4; g.beginPath();
+  for (let s = 0; s <= 400; s++) { const a = s * 0.12, r = 2 + s * 0.15; const x = w / 2 + Math.cos(a) * r, y = h / 2 + Math.sin(a) * r; s ? g.lineTo(x, y) : g.moveTo(x, y); }
+  g.stroke();
+}
+const patina = canvasTex(256, 256, drawPatina, [3, 1]);
+const ornamentTex = canvasTex(1024, 192, drawOrnament, [3, 1]);
+const letterTex = [...LETTERS].map(ch => canvasTex(384, 204, (g, w, h) => drawLetter(g, w, h, ch, false)));
+const letterTexHi = [...LETTERS].map(ch => canvasTex(384, 204, (g, w, h) => drawLetter(g, w, h, ch, true)));
+
+/* ═══════════════════ MATERIALES ═══════════════════ */
+const std = o => new THREE.MeshStandardMaterial(o);
+const M = {
+  bronze: std({ color: 0xB08A4C, metalness: 0.9, roughness: 0.36, map: patina, side: THREE.DoubleSide }),
+  bronzeHi: std({ color: 0xCAA35F, metalness: 0.95, roughness: 0.27, map: patina, side: THREE.DoubleSide }),
+  bronzeDark: std({ color: 0x5C4526, metalness: 0.85, roughness: 0.55, map: patina, side: THREE.DoubleSide }),
+  ornament: std({ color: 0xffffff, map: ornamentTex, bumpMap: ornamentTex, bumpScale: 2, metalness: 0.85, roughness: 0.42, side: THREE.DoubleSide }),
+  pointer: std({ color: 0xD4AE68, metalness: 0.95, roughness: 0.25, emissive: 0xffb347, emissiveIntensity: 0 }),
+  // Letras: marfil mate. La fila de lectura usa una versión dorada para distinguir la palabra que se forma.
+  letters: letterTex.map(t => std({ map: t, color: 0xd8ccb2, roughness: 0.9, metalness: 0, envMapIntensity: 0.25 })),
+  lettersHi: letterTexHi.map(t => std({ map: t, roughness: 0.75, metalness: 0, envMapIntensity: 0.3, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.16 })),
+  hidden: new THREE.MeshBasicMaterial({ visible: false }),
+  paper: std({ map: canvasTex(512, 256, drawParchment), roughness: 0.85 }),
+  rollEnd: std({ map: canvasTex(128, 128, drawRollEnd), roughness: 0.9 }),
+  ribbon: std({ color: 0x5d1813, roughness: 0.6 }),
+  wax: std({ color: 0x7c1f17, roughness: 0.38, metalness: 0.05 }),
+};
+
+/* ═══════════════════ GEOMETRÍA ═══════════════════ */
+const SHARED = new Set();
+const shared = g => (SHARED.add(g), g);
+const axisX = geo => { geo.rotateZ(-Math.PI / 2); return geo; };
+function tubeRing(rOut, rIn, width, seg = 128, phiStart = 0, phiLen = Math.PI * 2) {
+  const h = width / 2, V2 = THREE.Vector2;
+  return axisX(new THREE.LatheGeometry([new V2(rIn, -h), new V2(rOut, -h), new V2(rOut, h), new V2(rIn, h), new V2(rIn, -h)], seg, phiStart, phiLen));
+}
+function mesh(geo, mat, parent, x = 0, cast = true) {
+  const m = new THREE.Mesh(geo, mat); m.position.x = x; m.castShadow = cast; m.receiveShadow = true; parent.add(m); return m;
+}
+function triGeo(s, depth) {
+  const p = [[-s, 0], [s * 0.75, s * 0.9], [s * 0.75, -s * 0.9]];
+  const cx = (p[0][0] + p[1][0] + p[2][0]) / 3, k = 0.42;
+  const sh = new THREE.Shape(); sh.moveTo(...p[0]); sh.lineTo(...p[1]); sh.lineTo(...p[2]); sh.closePath();
+  const hp = p.map(([x, y]) => [cx + (x - cx) * k, y * k]);
+  const hole = new THREE.Path(); hole.moveTo(...hp[0]); hole.lineTo(...hp[2]); hole.lineTo(...hp[1]); hole.closePath();
+  sh.holes.push(hole);
+  return new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 2, curveSegments: 4 });
+}
+function patchGeometry(k) { // segmento curvo de una letra
+  const cols = 2, rows = 8, w = 1.36, a0 = -k * STEP - STEP / 2;
+  const pos = [], nor = [], uv = [], idx = [];
+  for (let j = 0; j <= rows; j++) {
+    const a = a0 + STEP * j / rows, s = Math.sin(a), c = Math.cos(a);
+    for (let i = 0; i <= cols; i++) { pos.push(-w / 2 + w * i / cols, R_LET * s, R_LET * c); nor.push(0, s, c); uv.push(i / cols, j / rows); }
+  }
+  const row = cols + 1;
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) { const a = j * row + i, b = a + 1, c = a + row + 1, d = a + row; idx.push(a, b, c, a, c, d); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx); return shared(g);
+}
+const G = {
+  patches: [...LETTERS].map((_, k) => patchGeometry(k)),
+  ringEdge: shared(tubeRing(3.1, 2.86, 0.12)),
+  ringInner: shared(tubeRing(2.99, 2.84, 1.36)),
+  ringProxy: shared(axisX(new THREE.CylinderGeometry(3.12, 3.12, 1.6, 48))),
+  sep: shared(tubeRing(3.2, 2.9, 0.24)),
+  aro: shared(tubeRing(3.24, 2.9, 0.2)),
+  pointer: shared(axisX(new THREE.ConeGeometry(0.16, 0.32, 4))),
+  lip: shared(tubeRing(2.88, 2.38, 0.18)),
+  coreEnd: shared(tubeRing(2.34, 1.62, 0.3)),
+  nub: shared(tubeRing(1.05, 0.85, 1.3)),
+  lug: shared(new THREE.BoxGeometry(0.5, 0.56, 0.22)),
+  wall: shared(axisX(new THREE.CylinderGeometry(2.3, 2.3, 0.08, 64))),
+  ribbon: shared(tubeRing(1.545, 1.49, 0.38)),
+  seal: shared(new THREE.CylinderGeometry(0.36, 0.36, 0.1, 40)),
+};
+
+/* Dimensiones según la cantidad de anillos */
+function dims(n) {
+  const H = n * RING_PITCH / 2;
+  return { n, H, ringX: Array.from({ length: n }, (_, i) => (i - (n - 1) / 2) * RING_PITCH), open: 2 * H + 1.3, tip: H + 4.68 };
+}
+let D = dims(5);
+
+const root = new THREE.Group(); scene.add(root);
+const dyn = new THREE.Group(); root.add(dyn);
+const rings = []; const pointerMeshes = [];
+let coreGroup = null, mechGen = 0;
+
+function buildCap() {
+  const g = new THREE.Group();
+  mesh(tubeRing(3.26, 2.85, 0.18), M.bronzeHi, g, 0.09);
+  mesh(axisX(new THREE.CylinderGeometry(3.13, 3.13, 1.6, 160, 1, true)), M.ornament, g, 0.98);
+  mesh(tubeRing(3.1, 2.85, 1.6), M.bronzeDark, g, 0.98, false);
+  for (let q = 0; q < 4; q++) {
+    const phi = q * Math.PI / 2, t = new THREE.Mesh(triGeo(0.34, 0.07), M.bronzeHi);
+    t.position.set(0.98, 3.12 * Math.sin(phi), 3.12 * Math.cos(phi)); t.rotation.x = -phi; t.castShadow = true; g.add(t);
+  }
+  mesh(tubeRing(3.26, 2.6, 0.18), M.bronzeHi, g, 1.87);
+  const prof = [[2.6, 0], [3.12, 0], [3.12, 0.28], [2.86, 0.34], [2.82, 0.7], [2.38, 0.76], [2.34, 1.05], [1.74, 1.1], [1.7, 1.34], [1.08, 1.4], [1.04, 1.54], [0.64, 1.6], [0.001, 1.62]]
+    .map(([r, h]) => new THREE.Vector2(r, h));
+  mesh(axisX(new THREE.LatheGeometry(prof, 128)), M.bronze, g, 1.96);
+  mesh(axisX(new THREE.ConeGeometry(0.64, 1.0, 64)), M.bronzeHi, g, 4.06);
+  for (let q = 0; q < 4; q++) {
+    const geo = new THREE.TorusGeometry(2.04, 0.085, 10, 40, 1.05);
+    geo.rotateZ(Math.PI / 4 + q * Math.PI / 2 - 0.525); geo.rotateY(Math.PI / 2);
+    mesh(geo, M.bronzeHi, g, 3.04);
+  }
+  for (let q = 0; q < 4; q++) {
+    const phi = q * Math.PI / 2, geo = triGeo(0.2, 0.06); geo.rotateY(Math.PI / 2);
+    const t = new THREE.Mesh(geo, M.bronzeHi); t.position.set(2.69, 2.6 * Math.sin(phi), 2.6 * Math.cos(phi)); t.rotation.x = -phi; g.add(t);
+  }
+  return g;
+}
+const frontCap = buildCap(); frontCap.rotation.y = Math.PI; root.add(frontCap);
+const backCap = buildCap(); root.add(backCap);
+
+function createRing(i) {
+  const g = new THREE.Group(); g.position.x = D.ringX[i]; g.userData.ringIndex = i;
+  const patches = [];
+  for (let k = 0; k < N; k++) patches.push(mesh(G.patches[k], M.letters[k], g, 0, false));
+  for (const x of [-0.74, 0.74]) mesh(G.ringEdge, M.bronze, g, x);
+  mesh(G.ringInner, M.bronzeDark, g, 0, false);
+  const proxy = new THREE.Mesh(G.ringProxy, M.hidden); proxy.userData.proxy = true; g.add(proxy);
+  g.userData.patches = patches; g.userData.cur = -1;
+  dyn.add(g); rings.push(g);
+}
+
+function createInnerCore() {
+  const c = new THREE.Group(), H = D.H, L = 2 * H + 0.7, cx = 0.575;
+  for (let q = 0; q < 4; q++) {
+    const center = Math.PI / 4 + q * Math.PI / 2, half = (50 * Math.PI / 180) / 2;
+    mesh(tubeRing(2.3, 2.2, L, 48, -center - half, half * 2), M.bronze, c, cx);
+  }
+  mesh(G.wall, M.bronzeDark, c, -H + 0.225);
+  mesh(G.coreEnd, M.bronzeHi, c, -H + 0.375);
+  mesh(G.coreEnd, M.bronzeHi, c, H + 0.775);
+  mesh(G.nub, M.bronze, c, H + 1.575);
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(2 * H + 0.25, 0.16, 0.28), M.bronzeHi);
+  rail.position.set(cx, 2.2, 0); rail.castShadow = true; c.add(rail);
+  D.ringX.forEach(x => { const l = new THREE.Mesh(G.lug, M.bronzeHi); l.position.set(x, 2.5, 0); l.castShadow = true; c.add(l); });
+  const sg = new THREE.Group(); sg.position.x = 0.6; sg.userData.isScroll = true;
+  mesh(axisX(new THREE.CylinderGeometry(1.5, 1.5, Math.max(2, 2 * H - 0.65), 96)), [M.paper, M.rollEnd, M.rollEnd], sg, 0);
+  mesh(G.ribbon, M.ribbon, sg, 0);
+  const seal = new THREE.Mesh(G.seal, M.wax); seal.rotation.x = Math.PI / 2; seal.position.set(0, 0, 1.57); sg.add(seal);
+  c.add(sg);
+  dyn.add(c); coreGroup = c;
+}
+
+function clearMechanism() {
+  dyn.traverse(o => { if (o.isMesh && !SHARED.has(o.geometry)) o.geometry.dispose(); });
+  dyn.clear(); rings.length = 0; pointerMeshes.length = 0; coreGroup = null;
+}
+
+function buildMechanism(n) {
+  clearMechanism(); mechGen++;
+  D = dims(n);
+  // Camisa fija y topes
+  mesh(tubeRing(2.5, 2.38, 2 * D.H + 0.05), M.bronzeDark, dyn, 0);
+  mesh(G.lip, M.bronze, dyn, -(D.H - 0.075)); mesh(G.lip, M.bronze, dyn, D.H - 0.075);
+  // Separadores con indicadores
+  const sepX = [-D.H, ...D.ringX.slice(0, -1).map(x => x + RING_PITCH / 2), D.H];
+  sepX.forEach((x, j) => {
+    const end = j === 0 || j === sepX.length - 1;
+    mesh(end ? G.aro : G.sep, end ? M.bronzeHi : M.bronze, dyn, x);
+    const ptr = new THREE.Mesh(G.pointer, M.pointer); ptr.position.set(x, 0, 3.24); ptr.rotation.x = Math.PI / 4; ptr.castShadow = true;
+    dyn.add(ptr); pointerMeshes.push(ptr);
+  });
+  for (let i = 0; i < n; i++) createRing(i);
+  createInnerCore();
+  frontCap.position.x = -(D.H + 0.125);
+  applyLayout();
+}
+function applyLayout() {
+  backCap.position.x = D.H + 0.125 + state.coreOffset;
+  if (coreGroup) coreGroup.position.x = state.coreOffset;
+}
+function updateHighlights() {
+  rings.forEach((r, i) => {
+    const cur = mod(state.turns[i] ?? 0, N);
+    if (r.userData.cur === cur) return;
+    const p = r.userData.patches;
+    if (r.userData.cur >= 0) p[r.userData.cur].material = M.letters[r.userData.cur];
+    p[cur].material = M.lettersHi[cur]; r.userData.cur = cur;
+  });
+}
+
+/* ═══════════════════ ANIMACIÓN Y CÁMARA ═══════════════════ */
+const tweens = [];
+const easeInOut = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+function tween(dur, update, ease = easeInOut) {
+  return new Promise(res => {
+    if (dur <= 0) { update(1); res(); return; }
+    tweens.push({ t: 0, dur, update, ease, res });
+  });
+}
+let camFly = 0;
+controls.addEventListener('start', () => { camFly++; });
+const VIEW_DIR = new THREE.Vector3(0.36, 0.3, 0.88);
+function fitFor(dir) {
+  const min = -D.tip, max = D.tip + (state.open ? D.open : 0), cx = (min + max) / 2, len = max - min;
+  const d = dir.clone().normalize();
+  const vf = THREE.MathUtils.degToRad(camera.fov) / 2, hf = Math.atan(Math.tan(vf) * camera.aspect);
+  const halfW = Math.max(3.6, (len / 2) * Math.sqrt(Math.max(0, 1 - d.x * d.x)) + 3.4 * Math.abs(d.x));
+  const dist = Math.max(halfW / Math.tan(hf), 4.4 / Math.tan(vf)) * 1.1 + Math.abs(d.x) * len / 2;
+  const target = new THREE.Vector3(cx, 0, 0);
+  return { pos: target.clone().addScaledVector(d, dist), target };
+}
+function flyTo(pos, target, dur = 0.9) {
+  const id = ++camFly, t0 = controls.target.clone();
+  const s0 = new THREE.Spherical().setFromVector3(camera.position.clone().sub(t0));
+  const s1 = new THREE.Spherical().setFromVector3(pos.clone().sub(target));
+  let dTheta = s1.theta - s0.theta; dTheta = mod(dTheta + Math.PI, Math.PI * 2) - Math.PI;
+  const s = new THREE.Spherical(), tg = new THREE.Vector3();
+  return tween(dur, p => {
+    if (id !== camFly) return;
+    s.radius = THREE.MathUtils.lerp(s0.radius, s1.radius, p);
+    s.phi = THREE.MathUtils.clamp(THREE.MathUtils.lerp(s0.phi, s1.phi, p), 0.01, Math.PI - 0.01);
+    s.theta = s0.theta + dTheta * p;
+    tg.lerpVectors(t0, target, p); controls.target.copy(tg);
+    camera.position.setFromSpherical(s).add(tg);
+  });
+}
+function resetCamera(dur = 0.9) { const { pos, target } = fitFor(VIEW_DIR); return flyTo(pos, target, dur); }
+function frameScene(dur = 1.0) { const { pos, target } = fitFor(camera.position.clone().sub(controls.target)); return flyTo(pos, target, dur); }
+
+/* ═══════════════════ LÓGICA DEL CRYPTEX ═══════════════════ */
+const getCurrentCombination = () => state.turns.map(t => LETTERS[mod(t, N)]).join('');
+function setupMechanism(n, letters, opened) {
+  if (rings.length !== n) buildMechanism(n); else mechGen++;
+  state.turns = [...letters].map(ch => Math.max(0, LETTERS.indexOf(ch)));
+  ringAngles = state.turns.map(t => -t * STEP);
+  rings.forEach((r, i) => { r.rotation.x = ringAngles[i]; });
+  state.open = !!opened; state.coreMoving = false; state.coreOffset = opened ? D.open : 0;
+  state.activeRing = Math.min(state.activeRing, n - 1);
+  root.rotation.y = 0;
+  applyLayout(); buildRingControls(); renderDock(); resetCamera(0);
+}
+function ringsLocked() { return state.view === 'player' && (state.solved || state.open || state.coreMoving); }
+function canChangeRings() {
+  if (ringsLocked()) { toast('El cryptex ya está abierto.'); return false; }
+  return true;
+}
+function setRingLetter(index, letter) {
+  const k = LETTERS.indexOf(String(letter).toUpperCase()); if (k < 0 || !canChangeRings()) return;
+  state.turns[index] += mod(k - mod(state.turns[index], N) + Math.floor(N / 2), N) - Math.floor(N / 2);
+  onRingsChanged();
+}
+function rotateRing(index, direction) {
+  if (!canChangeRings()) return;
+  state.activeRing = index; state.turns[index] += direction; onRingsChanged();
+}
+function onRingsChanged() {
+  if (state.view === 'player' && $('feedback').classList.contains('bad')) setFeedback('', '');
+  renderDock(); scheduleSave();
+}
+async function openCryptex() {
+  if (state.open || state.coreMoving) return;
+  const gen = mechGen;
+  state.open = true; state.coreMoving = true; renderDock(); frameScene(1.6);
+  await tween(1.7, p => { if (gen === mechGen) state.coreOffset = D.open * p; });
+  if (gen !== mechGen) return false;
+  state.coreMoving = false; renderDock(); return true;
+}
+function shake() { tween(0.55, p => { root.rotation.y = Math.sin(p * Math.PI * 7) * 0.05 * (1 - p); }, t => t); }
+async function tryCombination() {
+  if (state.view !== 'player') return;
+  if (state.solved) { if (!state.coreMoving) showMessage(); return; }
+  if (state.coreMoving) return;
+  const w = getCurrentCombination();
+  state.attempts++; state.lastTry = w;
+  if (w === state.config.word) {
+    state.solved = true; clearTimeout(saveTimer); saveProgress();
+    setFeedback('¡Correcto! El cryptex se abre…', 'ok');
+    const done = await openCryptex();
+    if (done && state.solved && state.view === 'player') { setFeedback('¡Lo lograste! El cryptex está abierto.', 'ok'); showMessage(); }
+  } else {
+    clearTimeout(saveTimer); saveProgress();
+    setFeedback('Incorrecto', 'bad'); shake();
+    const r = $('ringsUI'); r.classList.remove('bad'); void r.offsetWidth; r.classList.add('bad');
+    setTimeout(() => r.classList.remove('bad'), 700);
+  }
+  renderDock();
+}
+
+/* ═══════════════════ GUARDADO DEL JUGADOR ═══════════════════ */
+let saveTimer;
+function scheduleSave() { if (state.view !== 'player') return; clearTimeout(saveTimer); saveTimer = setTimeout(saveProgress, 350); }
+function playerRecord() {
+  return { name: state.player.name, letters: getCurrentCombination(), attempts: state.attempts, lastTry: state.lastTry,
+    solved: state.solved, r: state.config.round, updated: Date.now() };
+}
+function saveProgress() {
+  if (state.view !== 'player' || !state.player) return Promise.resolve();
+  return store.set(`players/${state.player.id}`, playerRecord()).catch(() => {});
+}
+
+/* ═══════════════════ INTERFAZ: CONTROLES DEL JUGADOR ═══════════════════ */
+const ringsUI = $('ringsUI');
+let ringTiles = [], ringBtns = [];
+function buildRingControls() {
+  ringsUI.innerHTML = ''; ringTiles = []; ringBtns = [];
+  ringsUI.style.setProperty('--n', rings.length);
+  for (let i = 0; i < rings.length; i++) {
+    const col = document.createElement('div'); col.className = 'ringcol';
+    const up = Object.assign(document.createElement('button'), { className: 'arrow', textContent: '▲', type: 'button' });
+    up.setAttribute('aria-label', `Anillo ${i + 1}: letra anterior`);
+    const tile = Object.assign(document.createElement('button'), { className: 'rtile', type: 'button' });
+    tile.setAttribute('aria-label', `Anillo ${i + 1}`);
+    const dn = Object.assign(document.createElement('button'), { className: 'arrow', textContent: '▼', type: 'button' });
+    dn.setAttribute('aria-label', `Anillo ${i + 1}: letra siguiente`);
+    up.onclick = () => rotateRing(i, -1);
+    dn.onclick = () => rotateRing(i, 1);
+    tile.onclick = () => { state.activeRing = i; renderDock(); };
+    col.append(up, tile, dn); ringsUI.appendChild(col);
+    ringTiles.push(tile); ringBtns.push(up, dn);
+  }
+}
+function renderDock() {
+  const comb = getCurrentCombination();
+  ringTiles.forEach((t, i) => { t.textContent = comb[i] || ''; t.classList.toggle('active', i === state.activeRing); });
+  const locked = ringsLocked();
+  ringBtns.forEach(b => { b.disabled = locked; });
+  ringsUI.classList.toggle('ok', state.solved);
+  $('btnTry').textContent = state.solved ? 'Ver mensaje' : 'Probar combinación';
+  $('btnTry').disabled = state.coreMoving;
+  $('attempts').textContent = state.attempts ? `Intentos: ${state.attempts}` : '';
+}
+function setFeedback(text, kind) { const f = $('feedback'); f.textContent = text; f.className = 'feedback' + (kind ? ' ' + kind : ''); }
+
+let toastTimer;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+}
+function showMessage(text) { $('msgText').textContent = text ?? state.config.message; $('msgModal').classList.add('show'); $('msgClose').focus(); }
+function hideMessage() { $('msgModal').classList.remove('show'); }
+
+/* ═══════════════════ VISTAS Y SESIONES ═══════════════════ */
+function showView(v) {
+  state.view = v; document.body.dataset.view = v;
+  requestAnimationFrame(() => { resize(true); });
+}
+const NET_TEXT = { local: 'Modo local · solo este dispositivo', connecting: 'Conectando…', online: 'En línea', error: 'Sin conexión' };
+store.onStatus(s => {
+  const c = $('netChip'); c.className = 'chip ' + s; c.querySelector('span').textContent = NET_TEXT[s] || s;
+  c.title = s === 'local' ? 'Sin base de datos configurada: el progreso se guarda solo en este navegador.' : '';
+});
+function stopSession() { unsubs.forEach(u => u()); unsubs = []; clearTimeout(saveTimer); clearInterval(teacherTick); hideMessage(); }
+
+async function enterPlayer(rawName) {
+  const name = String(rawName).trim().replace(/\s+/g, ' ').slice(0, 40), id = slugify(name);
+  if (id.length < 2) { $('nameErr').textContent = 'Escribe tu nombre y apellido.'; return; }
+  $('nameErr').textContent = ''; const btn = $('btnPlayer'); btn.disabled = true; btn.textContent = 'Entrando…';
+  try {
+    const [cfgRaw, rec] = await Promise.all([store.get('config'), store.get(`players/${id}`)]);
+    const cfg = cfgFrom(cfgRaw);
+    const resume = !!(rec && rec.r === cfg.round && normalizeWord(rec.letters).length === cfg.word.length);
+    state.config = cfg; state.loginResetAt = cfg.resetAt;
+    state.player = { id, name: (rec && rec.name) || name };
+    state.attempts = resume ? (rec.attempts | 0) : 0;
+    state.lastTry = resume ? String(rec.lastTry || '') : '';
+    state.solved = resume ? !!rec.solved : false;
+    try { localStorage.setItem('cryptex-last-name', name); } catch (e) { /* sin almacenamiento */ }
+    $('tbWho').textContent = state.player.name;
+    $('stageHint').textContent = 'Arrastra un anillo o usa los botones · La fila dorada es tu palabra';
+    setFeedback(state.solved ? '¡Lo lograste! El cryptex está abierto.' : '', state.solved ? 'ok' : '');
+    showView('player');
+    setupMechanism(cfg.word.length, resume ? normalizeWord(rec.letters) : LETTERS[0].repeat(cfg.word.length), state.solved);
+    await saveProgress();
+    unsubs.push(store.subscribe('config', onPlayerConfig));
+    toast(resume ? `Hola de nuevo, ${state.player.name}. Sigues donde quedaste.` : `¡Bienvenido, ${state.player.name}! Descifra la palabra.`);
+  } catch (e) {
+    $('nameErr').textContent = 'No se pudo conectar. Revisa tu conexión e inténtalo de nuevo.';
+  } finally { btn.disabled = false; btn.textContent = 'Entrar a jugar'; }
+}
+function onPlayerConfig(raw) {
+  if (state.view !== 'player') return;
+  const cfg = cfgFrom(raw);
+  if (cfg.resetAt !== state.loginResetAt) { logout('El docente reinició el juego. Vuelve a ingresar tu nombre.'); return; }
+  const prev = state.config; state.config = cfg;
+  if (cfg.round !== prev.round || cfg.word.length !== rings.length) {
+    state.attempts = 0; state.lastTry = ''; state.solved = false; hideMessage(); setFeedback('', '');
+    setupMechanism(cfg.word.length, LETTERS[0].repeat(cfg.word.length), false);
+    saveProgress(); toast('El docente cambió la palabra secreta. ¡Nuevo desafío!');
+  }
+}
+
+function enterTeacher(pw, silent) {
+  if (pw !== CONFIG.teacherPassword) { if (!silent) $('pwErr').textContent = 'Contraseña incorrecta.'; return; }
+  $('pwErr').textContent = ''; $('pwIn').value = '';
+  try { sessionStorage.setItem('cryptex-docente', '1'); } catch (e) { /* sin almacenamiento */ }
+  state.solved = false; state.attempts = 0; dirty = false;
+  $('tbWho').textContent = 'Panel docente';
+  $('stageHint').textContent = 'Vista previa · así verán el cryptex tus estudiantes (aquí, con la palabra correcta)';
+  showView('teacher');
+  fillTeacherForm(state.config); previewWord(state.config.word);
+  unsubs.push(store.subscribe('config', onTeacherConfig));
+  unsubs.push(store.subscribe('players', d => { state.players = d; renderPlayers(); }));
+  teacherTick = setInterval(renderPlayers, 15000);
+}
+let teacherTick, dirty = false, lastCfgJson = '';
+function onTeacherConfig(raw) {
+  if (state.view !== 'teacher') return;
+  const cfg = cfgFrom(raw), j = JSON.stringify(cfg);
+  if (j === lastCfgJson) return;
+  lastCfgJson = j; state.config = cfg;
+  if (!dirty) { fillTeacherForm(cfg); previewWord(cfg.word); }
+  renderPlayers();
+}
+function fillTeacherForm(cfg) { $('wordIn').value = cfg.word; $('msgIn').value = cfg.message; updateWordHelp(); }
+function previewWord(w) {
+  if (w.length < CONFIG.minLetters || w.length > CONFIG.maxLetters) return;
+  if (w === getCurrentCombination() && rings.length === w.length && !state.open) return;
+  setupMechanism(w.length, w, false);
+}
+function updateWordHelp() {
+  const raw = $('wordIn').value, w = normalizeWord(raw), h = $('wordHelp');
+  const valid = w.length >= CONFIG.minLetters && w.length <= CONFIG.maxLetters;
+  if (w.length < CONFIG.minLetters) { h.className = 'help bad'; h.textContent = `Escribe al menos ${CONFIG.minLetters} letras.`; }
+  else if (w.length > CONFIG.maxLetters) { h.className = 'help bad'; h.textContent = `Máximo ${CONFIG.maxLetters} letras.`; }
+  else {
+    h.className = 'help';
+    const cleaned = raw.replace(/\s/g, '').toUpperCase() !== w;
+    h.innerHTML = `Se usará <b>${esc(w)}</b> · ${w.length} anillos${cleaned ? ' (se quitaron espacios, tildes u otros signos)' : ''}. Letras A–Z y Ñ, de ${CONFIG.minLetters} a ${CONFIG.maxLetters}.`;
+  }
+  const changed = w !== state.config.word || $('msgIn').value.trim() !== state.config.message;
+  $('btnSave').disabled = !valid || !changed;
+  return { w, valid };
+}
+async function saveConfig() {
+  const { w, valid } = updateWordHelp(); if (!valid) return;
+  const message = $('msgIn').value.trim() || DEFAULT_CFG.message;
+  const wordChanged = w !== state.config.word;
+  const cfg = { word: w, message, round: wordChanged ? newId() : state.config.round, resetAt: state.config.resetAt };
+  const btn = $('btnSave'); btn.disabled = true; btn.textContent = 'Guardando…';
+  try {
+    await store.set('config', cfg);
+    if (wordChanged && state.players) {
+      const upd = {}, start = LETTERS[0].repeat(w.length);
+      for (const id of Object.keys(state.players)) {
+        Object.assign(upd, { [`players/${id}/letters`]: start, [`players/${id}/attempts`]: 0, [`players/${id}/lastTry`]: '',
+          [`players/${id}/solved`]: false, [`players/${id}/r`]: cfg.round });
+      }
+      if (Object.keys(upd).length) await store.update('', upd);
+    }
+    dirty = false; state.config = cfg; lastCfgJson = JSON.stringify(cfgFrom(cfg));
+    fillTeacherForm(cfg);
+    $('saveHelp').innerHTML = '<span class="saved">Cambios guardados.</span> Los jugadores conectados ya ven la nueva configuración.';
+    renderPlayers();
+  } catch (e) {
+    $('saveHelp').innerHTML = '<span style="color:var(--bad)">No se pudo guardar. Revisa la conexión.</span>';
+  } finally { btn.textContent = 'Guardar cambios'; updateWordHelp(); }
+}
+let resetArmed = null;
+async function resetGame() {
+  const b = $('btnReset');
+  if (!resetArmed) {
+    b.classList.add('confirm'); b.textContent = 'Confirmar: borrar a todos los jugadores';
+    resetArmed = setTimeout(() => { resetArmed = null; b.classList.remove('confirm'); b.textContent = 'Resetear juego'; }, 4000);
+    return;
+  }
+  clearTimeout(resetArmed); resetArmed = null; b.disabled = true; b.textContent = 'Reseteando…';
+  try {
+    const cfg = { ...state.config, resetAt: Date.now(), round: newId() };
+    await store.set('config', cfg); await store.remove('players');
+    state.config = cfg; lastCfgJson = JSON.stringify(cfgFrom(cfg)); state.players = null; renderPlayers();
+    toast('Juego reseteado. Los jugadores deben ingresar de nuevo.');
+  } catch (e) { toast('No se pudo resetear. Revisa la conexión.'); }
+  finally { b.disabled = false; b.classList.remove('confirm'); b.textContent = 'Resetear juego'; }
+}
+function ago(ts) {
+  const s = Math.max(0, Math.round((Date.now() - (ts || 0)) / 1000));
+  if (s < 60) return `hace ${s} s`; if (s < 3600) return `hace ${Math.round(s / 60)} min`;
+  if (s < 86400) return `hace ${Math.round(s / 3600)} h`; return `hace ${Math.round(s / 86400)} d`;
+}
+function renderPlayers() {
+  if (state.view !== 'teacher') return;
+  const cfg = state.config, word = [...cfg.word];
+  const list = Object.entries(state.players || {})
+    .filter(([, r]) => r && typeof r === 'object' && r.r === cfg.round)
+    .map(([id, r]) => ({ id, ...r }))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), 'es'));
+  const solved = list.filter(p => p.solved).length;
+  $('pSummary').textContent = list.length ? `${list.length} ${list.length === 1 ? 'jugador' : 'jugadores'} · ${solved} ${solved === 1 ? 'resolvió' : 'resolvieron'}` : '';
+  $('pBody').innerHTML = list.length ? list.map(p => {
+    const letters = [...normalizeWord(p.letters)];
+    const tiles = letters.map((ch, j) => `<span class="${ch === word[j] ? 'hit' : ''}">${esc(ch)}</span>`).join('');
+    const fresh = Date.now() - (p.updated || 0) < 120000;
+    return `<tr><td><div class="pname">${esc(p.name)}</div><div class="pact"><i class="${fresh ? 'on' : ''}"></i>${ago(p.updated)}</div></td>
+      <td><span class="mini">${tiles}</span></td><td>${p.attempts | 0}</td>
+      <td class="mono">${esc(p.lastTry || '—')}</td>
+      <td>${p.solved ? '<span class="tag done">Resuelto</span>' : '<span class="tag">En juego</span>'}</td></tr>`;
+  }).join('') : '<tr><td class="empty" colspan="5">Aún no ingresan jugadores.</td></tr>';
+}
+
+function logout(msg) {
+  stopSession();
+  if (state.view === 'teacher') { try { sessionStorage.removeItem('cryptex-docente'); } catch (e) { /* nada */ } }
+  state.player = null; state.solved = false; state.players = null; dirty = false; lastCfgJson = '';
+  setFeedback('', ''); showView('login');
+  if (msg) $('nameErr').textContent = msg;
+}
+
+/* ═══════════════════ EVENTOS DE INTERFAZ ═══════════════════ */
+$('playerForm').addEventListener('submit', e => { e.preventDefault(); enterPlayer($('nameIn').value); });
+$('teacherForm').addEventListener('submit', e => { e.preventDefault(); enterTeacher($('pwIn').value); });
+$('btnLogout').onclick = () => logout();
+$('btnTry').onclick = tryCombination;
+$('btnSave').onclick = saveConfig;
+$('btnReset').onclick = resetGame;
+$('btnPreviewMsg').onclick = () => showMessage($('msgIn').value.trim() || DEFAULT_CFG.message);
+$('msgClose').onclick = hideMessage;
+$('msgModal').addEventListener('click', e => { if (e.target.id === 'msgModal') hideMessage(); });
+let previewTimer;
+$('wordIn').addEventListener('input', () => {
+  dirty = true; const { w, valid } = updateWordHelp();
+  clearTimeout(previewTimer); if (valid) previewTimer = setTimeout(() => previewWord(w), 250);
+});
+$('msgIn').addEventListener('input', () => { dirty = true; updateWordHelp(); });
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { hideMessage(); return; }
+  if (state.view === 'login' || /INPUT|TEXTAREA/.test(document.activeElement?.tagName || '')) return;
+  const n = rings.length; if (!n) return;
+  if (e.key === 'ArrowLeft') { state.activeRing = mod(state.activeRing - 1, n); renderDock(); e.preventDefault(); }
+  if (e.key === 'ArrowRight') { state.activeRing = mod(state.activeRing + 1, n); renderDock(); e.preventDefault(); }
+  if (e.key === 'ArrowUp') { rotateRing(state.activeRing, -1); e.preventDefault(); }
+  if (e.key === 'ArrowDown') { rotateRing(state.activeRing, 1); e.preventDefault(); }
+  if (e.key === 'Enter' && state.view === 'player' && document.activeElement === canvas) tryCombination();
+});
+
+/* ═══════════════════ ARRASTRE DE ANILLOS (mouse y touch) ═══════════════════ */
+const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function setRay(e) {
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+}
+const firstHit = () => raycaster.intersectObject(root, true)[0];
+function ancestorData(o, k) { for (; o; o = o.parent) if (o.userData[k] !== undefined) return o.userData[k]; return undefined; }
+function ringPixelRadius(i) {
+  const p = rings[i].getWorldPosition(new THREE.Vector3());
+  const a = p.clone().project(camera), b = p.clone().add(new THREE.Vector3(0, R_LET, 0)).project(camera);
+  return Math.max(Math.hypot((a.x - b.x) * canvas.clientWidth / 2, (a.y - b.y) * canvas.clientHeight / 2), 40);
+}
+let down = null;
+stage.addEventListener('pointerdown', e => {
+  if (e.target !== canvas) return;
+  down = { x: e.clientX, y: e.clientY, t: performance.now() };
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  setRay(e); const hit = firstHit(); if (!hit) return;
+  const ri = ancestorData(hit.object, 'ringIndex'); if (ri === undefined) return;
+  e.stopPropagation(); // la cámara no orbita mientras se gira un anillo
+  state.activeRing = ri;
+  if (!canChangeRings()) { renderDock(); return; }
+  const p = rings[ri].getWorldPosition(new THREE.Vector3());
+  state.dragging = { i: ri, startY: e.clientY, startAngle: ringAngles[ri], rpx: ringPixelRadius(ri), sign: camera.position.z - p.z >= 0 ? 1 : -1 };
+  controls.enabled = false; canvas.style.cursor = 'grabbing'; renderDock();
+}, true);
+window.addEventListener('pointermove', e => {
+  const d = state.dragging;
+  if (d) {
+    ringAngles[d.i] = d.startAngle + d.sign * (e.clientY - d.startY) / d.rpx;
+    const t = Math.round(-ringAngles[d.i] / STEP);
+    if (t !== state.turns[d.i]) { state.turns[d.i] = t; onRingsChanged(); }
+    return;
+  }
+  if (e.target !== canvas || e.buttons) return;
+  setRay(e); const hit = firstHit();
+  const overRing = hit && ancestorData(hit.object, 'ringIndex') !== undefined && !ringsLocked();
+  const overScroll = hit && state.solved && !state.coreMoving && ancestorData(hit.object, 'isScroll');
+  canvas.style.cursor = overScroll ? 'pointer' : overRing ? 'grab' : '';
+});
+function endDrag() { if (state.dragging) { state.dragging = null; controls.enabled = true; canvas.style.cursor = ''; } }
+window.addEventListener('pointerup', e => {
+  endDrag(); // el anillo se ajusta solo a la letra más cercana
+  if (down && e.target === canvas && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 6 && performance.now() - down.t < 500) {
+    setRay(e); const hit = firstHit();
+    if (hit && state.view === 'player' && state.solved && !state.coreMoving && ancestorData(hit.object, 'isScroll')) showMessage();
+  }
+  down = null;
+});
+window.addEventListener('pointercancel', endDrag);
+
+/* ═══════════════════ BUCLE ═══════════════════ */
+let lastW = 0;
+function resize(refit) {
+  const w = stage.clientWidth, h = stage.clientHeight; if (!w || !h) return;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  if (refit || Math.abs(w - lastW) > 40) { lastW = w; frameScene(0); }
+}
+new ResizeObserver(() => resize(false)).observe(stage);
+
+let last = performance.now(), firstFrame = true;
+function animate(now = performance.now()) {
+  requestAnimationFrame(animate);
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  for (let k = tweens.length - 1; k >= 0; k--) {
+    const tw = tweens[k]; tw.t += dt; const p = Math.min(1, tw.t / tw.dur);
+    tw.update(tw.ease(p)); if (p >= 1) { tweens.splice(k, 1); tw.res(); }
+  }
+  if (state.view === 'login') return;
+  const kRing = 1 - Math.exp(-dt * 16);
+  rings.forEach((r, i) => {
+    if (!state.dragging || state.dragging.i !== i) ringAngles[i] += (-state.turns[i] * STEP - ringAngles[i]) * kRing;
+    r.rotation.x = ringAngles[i];
+  });
+  updateHighlights(); applyLayout();
+  const glow = state.solved ? 0.55 + 0.25 * Math.sin(now / 380) : 0;
+  M.pointer.emissiveIntensity += (glow - M.pointer.emissiveIntensity) * (1 - Math.exp(-dt * 8));
+  controls.update();
+  renderer.render(scene, camera);
+  if (firstFrame) { firstFrame = false; $('loader').classList.add('hide'); }
+}
+
+/* ═══════════════════ INICIO ═══════════════════ */
+setupMechanism(DEFAULT_CFG.word.length, LETTERS[0].repeat(DEFAULT_CFG.word.length), false);
+try { $('nameIn').value = localStorage.getItem('cryptex-last-name') || ''; } catch (e) { /* nada */ }
+try {
+  if (sessionStorage.getItem('cryptex-docente') === '1') {
+    store.get('config').then(c => { state.config = cfgFrom(c); enterTeacher(CONFIG.teacherPassword, true); }).catch(() => {});
+  }
+} catch (e) { /* nada */ }
+animate();
+document.body.dataset.ready = '1';
+</script>
+</body>
+</html>
